@@ -24,7 +24,7 @@ import {
 const navItems = [
   { title: "Proxy Browser", url: "/", icon: Globe },
   { title: "Saved Sites", url: "/library", icon: Bookmark },
-  { title: "AI Recommendations", url: "/recommendations", icon: Sparkles },
+  { title: "Recommendations", url: "/recommendations", icon: Sparkles },
   { title: "History", url: "/history", icon: Clock },
   { title: "Proxy Logs", url: "/logs", icon: Shield },
 ];
