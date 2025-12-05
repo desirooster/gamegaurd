@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   RefreshCw, 
   Maximize2, 
@@ -28,6 +28,7 @@ interface ProxyViewerProps {
   onHome: () => void;
   onSave: () => void;
   onFullscreen: () => void;
+  onNavigate?: (url: string) => void;
   isFullscreen?: boolean;
 }
 
@@ -43,9 +44,21 @@ export function ProxyViewer({
   onHome,
   onSave,
   onFullscreen,
+  onNavigate,
   isFullscreen = false,
 }: ProxyViewerProps) {
   const [iframeKey, setIframeKey] = useState(0);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'proxy-navigate' && event.data?.url && onNavigate) {
+        onNavigate(event.data.url);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onNavigate]);
 
   const handleRefresh = () => {
     setIframeKey((prev) => prev + 1);
@@ -175,7 +188,7 @@ export function ProxyViewer({
             key={iframeKey}
             srcDoc={content}
             className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             title="Proxied Content"
             data-testid="iframe-proxy"
           />
