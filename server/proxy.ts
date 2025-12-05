@@ -9,6 +9,72 @@ interface ProxyResult {
   error?: string;
 }
 
+const proxyScript = `
+<script>
+(function() {
+  // Intercept all link clicks
+  document.addEventListener('click', function(e) {
+    let target = e.target;
+    
+    // Find the closest anchor tag
+    while (target && target.tagName !== 'A') {
+      target = target.parentElement;
+    }
+    
+    if (target && target.href) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      // Send message to parent to navigate through proxy
+      window.parent.postMessage({
+        type: 'proxy-navigate',
+        url: target.href
+      }, '*');
+    }
+  }, true);
+  
+  // Intercept form submissions
+  document.addEventListener('submit', function(e) {
+    const form = e.target;
+    if (form.method.toUpperCase() === 'GET' && form.action) {
+      e.preventDefault();
+      
+      const formData = new FormData(form);
+      const params = new URLSearchParams(formData);
+      const url = form.action + '?' + params.toString();
+      
+      window.parent.postMessage({
+        type: 'proxy-navigate',
+        url: url
+      }, '*');
+    }
+  }, true);
+  
+  // Handle window.open
+  const originalOpen = window.open;
+  window.open = function(url) {
+    if (url) {
+      window.parent.postMessage({
+        type: 'proxy-navigate',
+        url: new URL(url, window.location.href).href
+      }, '*');
+    }
+    return null;
+  };
+  
+  // Handle location changes
+  const originalPushState = history.pushState;
+  history.pushState = function() {
+    originalPushState.apply(this, arguments);
+    window.parent.postMessage({
+      type: 'proxy-navigate',
+      url: window.location.href
+    }, '*');
+  };
+})();
+</script>
+`;
+
 export async function fetchProxiedContent(url: string): Promise<ProxyResult> {
   const startTime = Date.now();
 
@@ -18,7 +84,9 @@ export async function fetchProxiedContent(url: string): Promise<ProxyResult> {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
+        "Referer": url,
       },
+      redirect: "follow",
     });
 
     const responseTime = Date.now() - startTime;
@@ -68,25 +136,39 @@ export async function fetchProxiedContent(url: string): Promise<ProxyResult> {
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const title = titleMatch ? titleMatch[1].trim() : baseUrl.hostname;
 
+    // Add base tag for relative URLs
     html = html.replace(
       /<head([^>]*)>/i,
-      `<head$1><base href="${baseUrl.origin}/">`
+      `<head$1><base href="${baseUrl.origin}/" target="_self">`
     );
 
+    // Rewrite relative URLs to absolute
     html = html.replace(
-      /(<link[^>]*href=["'])(?!http|\/\/|data:)/gi,
+      /(<link[^>]*href=["'])(?!http|\/\/|data:|javascript:|#)/gi,
       `$1${baseUrl.origin}/`
     );
 
     html = html.replace(
-      /(<script[^>]*src=["'])(?!http|\/\/|data:)/gi,
+      /(<script[^>]*src=["'])(?!http|\/\/|data:|javascript:)/gi,
       `$1${baseUrl.origin}/`
     );
 
     html = html.replace(
-      /(<img[^>]*src=["'])(?!http|\/\/|data:)/gi,
+      /(<img[^>]*src=["'])(?!http|\/\/|data:|javascript:)/gi,
       `$1${baseUrl.origin}/`
     );
+
+    html = html.replace(
+      /(<a[^>]*href=["'])(?!http|\/\/|data:|javascript:|#|mailto:)/gi,
+      `$1${baseUrl.origin}/`
+    );
+
+    // Inject our navigation script before </body>
+    if (html.includes('</body>')) {
+      html = html.replace('</body>', `${proxyScript}</body>`);
+    } else {
+      html += proxyScript;
+    }
 
     await storage.createProxyLog({
       url,
