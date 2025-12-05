@@ -181,6 +181,7 @@ export default function Home() {
         onHome={handleHome}
         onSave={handleSave}
         onFullscreen={handleFullscreen}
+        onNavigate={handleNavigate}
         isFullscreen={isFullscreen}
       />
     </div>
